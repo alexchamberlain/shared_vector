@@ -402,7 +402,6 @@ impl<T> RawVector<T> {
     pub fn clone_buffer<A: Allocator>(&self, allocator: &A) -> Self
     where
         T: Clone,
-        A: Clone,
     {
         self.clone_buffer_with_capacity(allocator, self.len())
     }
@@ -410,14 +409,9 @@ impl<T> RawVector<T> {
     /// Allocate a clone of this buffer with a different capacity
     ///
     /// The capacity must be at least as large as the buffer's length.
-    ///
-    /// # Safety
-    ///
-    /// The provided allocator must be the one this raw vector was created with.
     pub fn clone_buffer_with_capacity<A: Allocator>(&self, allocator: &A, cap: usize) -> Self
     where
         T: Clone,
-        A: Clone,
     {
         let mut clone =
             Self::try_with_capacity(allocator, cap.max(self.len())).unwrap();
@@ -530,8 +524,6 @@ impl<T> RawVector<T> {
     ///
     /// The provided allocator must be the one this raw vector was created with.
     pub unsafe fn shrink_to<A: Allocator>(&mut self, allocator: &A, min_capacity: usize)
-    where
-        T: Clone,
     {
         let min_capacity = min_capacity.max(self.len());
         if self.capacity() <= min_capacity {
@@ -547,8 +539,6 @@ impl<T> RawVector<T> {
     ///
     /// The provided allocator must be the one this raw vector was created with.
     pub unsafe fn shrink_to_fit<A: Allocator>(&mut self, allocator: &A)
-    where
-        T: Clone,
     {
         self.shrink_to(allocator, self.len())
     }
@@ -770,6 +760,32 @@ impl<T> RawVector<T> {
     }
 }
 
+pub trait FromIteratorIn<U, A: Allocator>: Sized {
+    fn from_iter_in<T>(alloc: &A, iter: T) -> Self
+    where
+        T: IntoIterator<Item = U>;
+}
+
+pub trait CollectIn<U, A: Allocator>: Sized + IntoIterator<Item=U> {
+    fn collect_in<B: FromIteratorIn<U, A>>(self, alloc: &A) -> B
+    {
+        FromIteratorIn::from_iter_in(alloc, self)
+    }
+}
+
+impl<U, A: Allocator, T: Sized + IntoIterator<Item=U>> CollectIn<U, A> for T {
+
+}
+
+impl<T, A: Allocator> FromIteratorIn<T, A> for RawVector<T> {
+    #[inline]
+    fn from_iter_in<I: IntoIterator<Item = T>>(alloc: &A, iter: I) -> RawVector<T> {
+        let mut v = RawVector::new();
+        unsafe { v.extend(alloc, iter); }
+        v
+    }
+}
+
 impl<T: PartialEq<T>> PartialEq<RawVector<T>> for RawVector<T> {
     fn eq(&self, other: &Self) -> bool {
         self.as_slice() == other.as_slice()
@@ -780,6 +796,10 @@ impl<T: PartialEq<T>> PartialEq<&[T]> for RawVector<T> {
     fn eq(&self, other: &&[T]) -> bool {
         self.as_slice() == *other
     }
+}
+
+impl<T: Eq> Eq for RawVector<T> {
+
 }
 
 impl<T> AsRef<[T]> for RawVector<T> {
@@ -1384,6 +1404,17 @@ impl<T, A: Allocator> AsRef<[T]> for Vector<T, A> {
 impl<T, A: Allocator> AsMut<[T]> for Vector<T, A> {
     fn as_mut(&mut self) -> &mut [T] {
         self.as_mut_slice()
+    }
+}
+
+impl<T, A: Allocator> Into<(A, RawVector<T>)> for Vector<T, A> {
+    fn into(mut self) -> (A, RawVector<T>) {
+        let allocator = mem::replace(&mut self.allocator, unsafe { mem::uninitialized() });
+        let raw = self.raw.take();
+        
+        mem::forget(self);
+
+        (allocator, raw)
     }
 }
 

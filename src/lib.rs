@@ -9,7 +9,7 @@ mod splice;
 
 pub use raw::{AtomicRefCount, BufferSize, DefaultRefCount, RefCount};
 pub use shared::{AtomicSharedVector, RefCountedVector, SharedVector};
-pub use vector::{Vector, RawVector};
+pub use vector::{Vector, RawVector, CollectIn};
 
 pub mod alloc {
     pub use allocator_api2::alloc::{AllocError, Allocator, Global};
